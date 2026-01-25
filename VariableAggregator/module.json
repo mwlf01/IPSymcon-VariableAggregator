@@ -1,0 +1,14 @@
+{
+    "id": "{F4B8C3D2-9E5A-6F7C-0B1D-2E3F4A5B6C7D}",
+    "name": "VariableAggregator",
+    "type": 3,
+    "vendor": "",
+    "aliases": [
+        "Variable Aggregator"
+    ],
+    "parentRequirements": [],
+    "childRequirements": [],
+    "implemented": [],
+    "prefix": "VA",
+    "url": "https://github.com/mwlf01/IPSymcon-VariableAggregator"
+}

@@ -1,0 +1,12 @@
+{
+    "id": "{E3A7F2C1-8B4D-5E6F-9A0B-1C2D3E4F5A6B}",
+    "name": "VariableAggregator",
+    "author": "mwlf01",
+    "url": "https://github.com/mwlf01/IPSymcon-VariableAggregator",
+    "compatibility": {
+        "version": "8.1"
+    },
+    "version": "1.0.0",
+    "build": 0,
+    "date": 0
+}

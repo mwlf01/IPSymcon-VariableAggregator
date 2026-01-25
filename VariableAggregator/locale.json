@@ -1,0 +1,26 @@
+{
+    "translations": {
+        "de": {
+            "Variable Aggregator": "Variablen-Aggregator",
+            "Variable Mappings": "Variablen-Zuordnungen",
+            "Mapped Variables": "Zugeordnete Variablen",
+            "Source Variable": "Quellvariable",
+            "Name": "Name",
+            "Description": "Beschreibung",
+            "ID": "ID",
+            "Target Type": "Zieltyp",
+            "Boolean": "Boolean",
+            "Integer": "Integer",
+            "Float": "Float",
+            "String": "String",
+            "Sync Direction": "Sync-Richtung",
+            "Bidirectional": "Bidirektional",
+            "From Source Only": "Nur von Quelle",
+            "To Source Only": "Nur zur Quelle",
+            "Sync All From Source": "Alle von Quelle synchronisieren",
+            "Sync All To Source": "Alle zur Quelle synchronisieren",
+            "Module is active": "Modul ist aktiv",
+            "No variables configured": "Keine Variablen konfiguriert"
+        }
+    }
+}

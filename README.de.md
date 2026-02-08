@@ -92,7 +92,7 @@ Konfigurieren Sie, welche Variablen im virtuellen Gerät enthalten sein sollen:
 | Einstellung | Beschreibung |
 |-------------|--------------|
 | **Quellvariable** | Beliebige Variable aus Ihrer IP-Symcon Installation auswählen (optional für eigenständige Variablen) |
-| **Name** | Anzeigename für die virtuelle Variable (verwendet Quellname wenn leer) |
+| **Name** | Anzeigename für die virtuelle Variable (verwendet Quellname wenn leer). Nach der Erstellung werden manuell geänderte Namen beibehalten, sofern sie nicht explizit in der Konfiguration überschrieben werden |
 | **Zieltyp** | Datentyp für die virtuelle Variable: Boolean, Integer, Float oder String (kann nach Erstellung nicht geändert werden) |
 | **Sync-Richtung** | Wie Änderungen synchronisiert werden: Bidirektional, Nur von Quelle, oder Nur zur Quelle |
 | **Beschreibung** | Optionale Beschreibung für Dokumentationszwecke |
@@ -117,6 +117,7 @@ Virtuelle Variablen werden dynamisch basierend auf Ihren Zuordnungen erstellt. J
 Die virtuellen Variablen:
 - Unterstützen Aktionen wenn die Sync-Richtung Schreiben zur Quelle erlaubt
 - Werden automatisch entfernt wenn Zuordnungen gelöscht werden
+- Behalten benutzerdefinierte Namen und Positionen nach der Erstellung bei (werden nur überschrieben, wenn sie explizit in der Konfiguration geändert werden)
 
 ---
 

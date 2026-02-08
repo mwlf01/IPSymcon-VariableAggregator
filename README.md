@@ -92,7 +92,7 @@ Configure which variables to include in the virtual device:
 | Setting | Description |
 |---------|-------------|
 | **Source Variable** | Select any variable from your IP-Symcon installation (optional for standalone variables) |
-| **Name** | Display name for the virtual variable (uses source name if empty) |
+| **Name** | Display name for the virtual variable (uses source name if empty). After creation, manually changed names are preserved unless explicitly overridden in the configuration |
 | **Target Type** | Data type for the virtual variable: Boolean, Integer, Float, or String (cannot be changed after creation) |
 | **Sync Direction** | How changes are synchronized: Bidirectional, From Source Only, or To Source Only |
 | **Description** | Optional description for documentation purposes |
@@ -117,6 +117,7 @@ Virtual variables are created dynamically based on your mappings. Each mapped so
 The virtual variables:
 - Support actions if sync direction allows writing to source
 - Are automatically removed when mappings are deleted
+- Preserve user-defined name and position after creation (only overwritten when explicitly changed in the configuration)
 
 ---
 

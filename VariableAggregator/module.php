@@ -130,6 +130,8 @@ class VariableAggregator extends IPSModule
                                 'column' => 'Name',
                                 'direction' => 'ascending'
                             ],
+                            'loadValuesFromConfiguration' => false,
+                            'values' => $this->getFormValues(),
                             'columns' => [
                                 [
                                     'caption' => 'Source Variable',
@@ -191,7 +193,7 @@ class VariableAggregator extends IPSModule
                                     'caption' => 'ID',
                                     'name' => 'Ident',
                                     'width' => '120px',
-                                    'add' => '',
+                                    'add' => $this->generateIdent(),
                                     'save' => true
                                 ]
                             ],
@@ -489,6 +491,28 @@ class VariableAggregator extends IPSModule
 
     /* ================= Private Helper Functions ================= */
 
+    private function getFormValues(): array
+    {
+        $raw = @json_decode($this->ReadPropertyString('VariableMappings'), true);
+        if (!is_array($raw)) {
+            return [];
+        }
+
+        foreach ($raw as &$mapping) {
+            $ident = trim($mapping['Ident'] ?? '');
+            if (!empty($ident)) {
+                $varID = @$this->GetIDForIdent($ident);
+                if ($varID !== false && @IPS_VariableExists($varID)) {
+                    $obj = IPS_GetObject($varID);
+                    $mapping['Name'] = $obj['ObjectName'];
+                }
+            }
+        }
+        unset($mapping);
+
+        return $raw;
+    }
+
     private function getVariableMappings(): array
     {
         $raw = @json_decode($this->ReadPropertyString('VariableMappings'), true);
@@ -677,9 +701,7 @@ class VariableAggregator extends IPSModule
             if ($obj['ObjectName'] !== $name) {
                 IPS_SetName($varID, $name);
             }
-            if ($obj['ObjectPosition'] !== $position) {
-                IPS_SetPosition($varID, $position);
-            }
+            // Position is under user control after creation, don't overwrite
             return;
         }
         

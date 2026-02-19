@@ -216,7 +216,7 @@ class VariableAggregator extends IPSModule
                                 '        "name" => "TargetType",',
                                 '        "caption" => "Target Type",',
                                 '        "width" => "100%",',
-                                '        "enabled" => empty($VariableMappings["Ident"]),',
+                                '        "enabled" => empty($VariableMappings["Ident"]) || @IPS_GetObjectIDByIdent($VariableMappings["Ident"], $id) === false,',
                                 '        "options" => [',
                                 '            ["caption" => "Boolean", "value" => 0],',
                                 '            ["caption" => "Integer", "value" => 1],',

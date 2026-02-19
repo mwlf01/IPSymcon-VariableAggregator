@@ -233,6 +233,11 @@ Create control interfaces that send commands to devices without reflecting devic
 
 ## Changelog
 
+### Version 1.1.0
+- Variable name and position are now under user control after creation (only overwritten when explicitly changed in the configuration)
+- Pre-generated unique identifiers for new variable mappings
+- Fixed data type selection being disabled for new variables
+
 ### Version 1.0.0
 - Initial release
 - Variable mapping with bidirectional synchronization

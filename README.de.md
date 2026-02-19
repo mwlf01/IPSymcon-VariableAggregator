@@ -233,6 +233,11 @@ Steuerungsschnittstellen erstellen, die Befehle an Geräte senden ohne Gerätezu
 
 ## Changelog
 
+### Version 1.1.0
+- Name und Position von Variablen stehen nach der Erstellung unter Benutzerkontrolle (werden nur überschrieben, wenn sie explizit in der Konfiguration geändert werden)
+- Vorgenerierte eindeutige Bezeichner für neue Variablen-Zuordnungen
+- Datentypauswahl bei neuen Variablen war fälschlicherweise deaktiviert — behoben
+
 ### Version 1.0.0
 - Erstveröffentlichung
 - Variablen-Zuordnung mit bidirektionaler Synchronisation

@@ -193,9 +193,13 @@ class VariableAggregator extends IPSModule
                                     'caption' => 'ID',
                                     'name' => 'Ident',
                                     'width' => '120px',
-                                    'add' => $this->generateIdent(),
+                                    'add' => '',
                                     'save' => true
                                 ]
+                            ],
+                            'onAdd' => [
+                                '$VariableMappings["Ident"] = "VA_ID_" . str_pad((string)random_int(0, 99999999), 8, "0", STR_PAD_LEFT);',
+                                'return $VariableMappings;'
                             ],
                             'form' => [
                                 'return [',
@@ -540,11 +544,14 @@ class VariableAggregator extends IPSModule
         }
 
         $modified = false;
+        $usedIdents = [];
         foreach ($raw as &$mapping) {
-            if (empty(trim($mapping['Ident'] ?? ''))) {
+            $ident = trim($mapping['Ident'] ?? '');
+            if (empty($ident) || in_array($ident, $usedIdents)) {
                 $mapping['Ident'] = $this->generateIdent();
                 $modified = true;
             }
+            $usedIdents[] = $mapping['Ident'];
         }
         unset($mapping);
 

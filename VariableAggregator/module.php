@@ -89,7 +89,7 @@ class VariableAggregator extends IPSModule
 
             $this->maintainVariableSmart($ident, $name, $targetType, $position);
 
-            if ($isStandalone || $syncDirection === 0 || $syncDirection === 2) {
+            if ($syncDirection !== 1) {
                 $this->EnableAction($ident);
             } else {
                 $this->DisableAction($ident);
@@ -233,6 +233,7 @@ class VariableAggregator extends IPSModule
                                 '        "name" => "SyncDirection",',
                                 '        "caption" => "Sync Direction",',
                                 '        "width" => "100%",',
+                                '        "enabled" => empty($VariableMappings["Ident"]) || @IPS_GetObjectIDByIdent($VariableMappings["Ident"], $id) === false,',
                                 '        "options" => [',
                                 '            ["caption" => "Bidirectional", "value" => 0],',
                                 '            ["caption" => "From Source Only", "value" => 1],',

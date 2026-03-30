@@ -254,6 +254,7 @@ Steuerungsschnittstellen erstellen, die Befehle an Geräte senden ohne Gerätezu
 Bei Problemen, Feature-Anfragen oder Beiträgen besuchen Sie bitte:
 - [GitHub Repository](https://github.com/mwlf01/IPSymcon-VariableAggregator)
 - [GitHub Issues](https://github.com/mwlf01/IPSymcon-VariableAggregator/issues)
+- [Symcon Community](https://community.symcon.de/) – Benutzer: **mwlf**
 
 ---
 
@@ -268,3 +269,4 @@ Dieses Projekt ist unter der MIT-Lizenz lizenziert - siehe [LICENSE](LICENSE) Da
 **mwlf01**
 
 - GitHub: [@mwlf01](https://github.com/mwlf01)
+- Symcon Community: [mwlf](https://community.symcon.de/)

@@ -1,6 +1,7 @@
 {
     "translations": {
         "de": {
+            "VariableAggregator": "Variablen-Aggregator",
             "Variable Aggregator": "Variablen-Aggregator",
             "Variable Mappings": "Variablen-Zuordnungen",
             "Mapped Variables": "Zugeordnete Variablen",
@@ -20,7 +21,9 @@
             "Sync All From Source": "Alle von Quelle synchronisieren",
             "Sync All To Source": "Alle zur Quelle synchronisieren",
             "Module is active": "Modul ist aktiv",
-            "No variables configured": "Keine Variablen konfiguriert"
+            "No variables configured": "Keine Variablen konfiguriert",
+            "Add": "Hinzufügen",
+            "Delete": "Löschen"
         }
     }
 }

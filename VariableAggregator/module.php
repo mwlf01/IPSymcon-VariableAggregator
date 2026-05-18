@@ -1,30 +1,55 @@
 <?php
+
+/*
+ * VariableAggregator for IP-Symcon
+ *
+ * SPDX-License-Identifier: EUPL-1.2
+ * Copyright (c) 2026 mwlf01
+ *
+ * Licensed under the EUPL, Version 1.2. See the LICENSE file for the full text.
+ */
+
 declare(strict_types=1);
 
-class VariableAggregator extends IPSModule
+class VariableAggregator extends IPSModuleStrict
 {
-    private const VM_UPDATE = 10603;
+    private const IDENT_PREFIX = 'VA_ID_';
 
     private const TYPE_BOOLEAN = 0;
     private const TYPE_INTEGER = 1;
     private const TYPE_FLOAT = 2;
     private const TYPE_STRING = 3;
 
+    private const SYNC_BIDIRECTIONAL = 0;
+    private const SYNC_FROM_SOURCE = 1;
+    private const SYNC_TO_SOURCE = 2;
+
+    private const TRUE_STRINGS = ['true', 'on', 'yes', '1', 'wahr', 'ein', 'an', 'ja'];
+    private const FALSE_STRINGS = ['false', 'off', 'no', '0', '', 'falsch', 'aus', 'nein'];
+
+    private ?array $cachedMappings = null;
+
     /* ================= Lifecycle ================= */
-    public function Create()
+    public function Create(): void
     {
         parent::Create();
 
         $this->RegisterPropertyString('VariableMappings', '[]');
-
         $this->RegisterAttributeBoolean('SyncInProgress', false);
     }
 
-    public function ApplyChanges()
+    public function ApplyChanges(): void
     {
         parent::ApplyChanges();
 
-        $this->normalizeMappings();
+        // Reset stale sync lock from previous crashes
+        $this->WriteAttributeBoolean('SyncInProgress', false);
+        $this->cachedMappings = null;
+
+        // If normalization changed identifiers, IPS_ApplyChanges is re-entered and finishes the work
+        if ($this->normalizeMappings()) {
+            return;
+        }
 
         foreach ($this->GetMessageList() as $senderID => $messages) {
             foreach ($messages as $message) {
@@ -42,6 +67,7 @@ class VariableAggregator extends IPSModule
 
         $position = 1;
         $existingIdents = [];
+        $registeredSources = [];
 
         foreach ($mappings as $mapping) {
             $sourceID = (int)($mapping['SourceVariableID'] ?? 0);
@@ -51,21 +77,17 @@ class VariableAggregator extends IPSModule
             $syncDirection = (int)($mapping['SyncDirection'] ?? 0);
 
             $hasSource = $sourceID > 0 && @IPS_VariableExists($sourceID);
-            $isStandalone = !$hasSource && !empty($name) && $targetType >= 0 && $targetType <= 3;
+            $isStandalone = !$hasSource && $name !== '' && $targetType >= 0 && $targetType <= 3;
 
             if (!$hasSource && !$isStandalone) {
                 continue;
             }
 
-            if (empty($ident)) {
-                $ident = $this->generateIdent();
+            if ($ident === '') {
+                // Should not happen after normalizeMappings(), but guard anyway
+                continue;
             }
 
-            $originalIdent = $ident;
-            $counter = 1;
-            while (in_array($ident, $existingIdents)) {
-                $ident = $originalIdent . '_' . $counter++;
-            }
             $existingIdents[] = $ident;
 
             $sourceType = $hasSource ? IPS_GetVariable($sourceID)['VariableType'] : $targetType;
@@ -83,21 +105,24 @@ class VariableAggregator extends IPSModule
                 }
             }
 
-            if (empty($name) && $hasSource) {
+            if ($name === '' && $hasSource) {
                 $name = IPS_GetName($sourceID);
             }
 
-            $this->maintainVariableSmart($ident, $name, $targetType, $position);
+            $profile = $hasSource ? $this->resolveProfile($sourceID, $sourceType, $targetType) : '';
 
-            if ($syncDirection !== 1) {
+            $this->maintainVariableSmart($ident, $name, $targetType, $profile, $position);
+
+            if ($syncDirection !== self::SYNC_FROM_SOURCE) {
                 $this->EnableAction($ident);
             } else {
                 $this->DisableAction($ident);
             }
 
             if ($hasSource) {
-                if ($syncDirection === 0 || $syncDirection === 1) {
-                    $this->RegisterMessage($sourceID, self::VM_UPDATE);
+                if ($syncDirection !== self::SYNC_TO_SOURCE && !isset($registeredSources[$sourceID])) {
+                    $this->RegisterMessage($sourceID, VM_UPDATE);
+                    $registeredSources[$sourceID] = true;
                 }
 
                 $this->syncFromSource($sourceID, $ident, $sourceType, $targetType);
@@ -280,7 +305,7 @@ class VariableAggregator extends IPSModule
     }
 
     /* ================= Action Handling ================= */
-    public function RequestAction($Ident, $Value)
+    public function RequestAction(string $Ident, mixed $Value): void
     {
         $mappings = $this->getVariableMappings();
         $mapping = $this->findMappingByIdent($mappings, $Ident);
@@ -308,28 +333,39 @@ class VariableAggregator extends IPSModule
             $sourceType = $targetType;
         }
 
-        $varID = @$this->GetIDForIdent($Ident);
-        if ($varID === false) {
+        if (@$this->GetIDForIdent($Ident) === false) {
             throw new Exception('Virtual variable not found: ' . $Ident);
         }
 
         $convertedValue = $this->convertValue($Value, $targetType);
-        SetValue($varID, $convertedValue);
 
-        if ($hasSource && $syncDirection !== 1) {
-            $sourceValue = $this->convertValue($Value, $sourceType);
-            $this->syncToSource($sourceID, $sourceValue);
+        // Guard against echo loop: writing to source triggers VM_UPDATE which MessageSink would
+        // otherwise convert back into the virtual variable
+        $this->WriteAttributeBoolean('SyncInProgress', true);
+        try {
+            $this->SetValue($Ident, $convertedValue);
+
+            if ($hasSource && $syncDirection !== self::SYNC_FROM_SOURCE) {
+                $sourceValue = $this->convertValue($Value, $sourceType);
+                $this->syncToSource($sourceID, $sourceValue);
+            }
+        } finally {
+            $this->WriteAttributeBoolean('SyncInProgress', false);
         }
     }
 
     /* ================= Message Sink ================= */
-    public function MessageSink($TimeStamp, $SenderID, $Message, $Data)
+    public function MessageSink(int $TimeStamp, int $SenderID, int $Message, array $Data): void
     {
-        if ($Message !== self::VM_UPDATE) {
+        if ($Message !== VM_UPDATE) {
             return;
         }
 
         if ($this->ReadAttributeBoolean('SyncInProgress')) {
+            return;
+        }
+
+        if (!@IPS_VariableExists($SenderID)) {
             return;
         }
 
@@ -343,16 +379,19 @@ class VariableAggregator extends IPSModule
         $sourceVar = IPS_GetVariable($SenderID);
         $sourceType = $sourceVar['VariableType'];
 
+        // VM_UPDATE delivers Data[0] = new value, avoiding a race with subsequent updates
+        $sourceValue = $Data[0] ?? @GetValue($SenderID);
+
         $this->WriteAttributeBoolean('SyncInProgress', true);
         try {
             foreach ($matchingMappings as $mapping) {
                 $syncDirection = (int)($mapping['SyncDirection'] ?? 0);
-                if ($syncDirection === 2) {
+                if ($syncDirection === self::SYNC_TO_SOURCE) {
                     continue;
                 }
 
                 $ident = $this->resolveIdent($mapping);
-                if (empty($ident)) {
+                if ($ident === '') {
                     continue;
                 }
 
@@ -361,7 +400,7 @@ class VariableAggregator extends IPSModule
                     $targetType = $sourceType;
                 }
 
-                $this->syncFromSource($SenderID, $ident, $sourceType, $targetType);
+                $this->writeVirtualValue($ident, $sourceValue, $targetType);
             }
         } finally {
             $this->WriteAttributeBoolean('SyncInProgress', false);
@@ -384,12 +423,12 @@ class VariableAggregator extends IPSModule
                     continue;
                 }
 
-                if ($syncDirection === 2) {
+                if ($syncDirection === self::SYNC_TO_SOURCE) {
                     continue;
                 }
 
                 $ident = $this->resolveIdent($mapping);
-                if (empty($ident)) {
+                if ($ident === '') {
                     continue;
                 }
 
@@ -414,31 +453,29 @@ class VariableAggregator extends IPSModule
             $mappings = $this->getVariableMappings();
             foreach ($mappings as $mapping) {
                 $sourceID = (int)($mapping['SourceVariableID'] ?? 0);
-                $targetType = (int)($mapping['TargetType'] ?? -1);
                 $syncDirection = (int)($mapping['SyncDirection'] ?? 0);
 
                 if ($sourceID <= 0 || !@IPS_VariableExists($sourceID)) {
                     continue;
                 }
 
-                if ($syncDirection === 1) {
+                if ($syncDirection === self::SYNC_FROM_SOURCE) {
                     continue;
                 }
 
                 $ident = $this->resolveIdent($mapping);
-                if (empty($ident)) {
+                if ($ident === '') {
+                    continue;
+                }
+
+                if (@$this->GetIDForIdent($ident) === false) {
                     continue;
                 }
 
                 $sourceVar = IPS_GetVariable($sourceID);
                 $sourceType = $sourceVar['VariableType'];
 
-                $virtualVarID = @$this->GetIDForIdent($ident);
-                if ($virtualVarID === false || !@IPS_VariableExists($virtualVarID)) {
-                    continue;
-                }
-
-                $virtualValue = GetValue($virtualVarID);
+                $virtualValue = $this->GetValue($ident);
                 $sourceValue = $this->convertValue($virtualValue, $sourceType);
                 $this->syncToSource($sourceID, $sourceValue);
             }
@@ -447,16 +484,15 @@ class VariableAggregator extends IPSModule
         }
     }
 
-    public function GetVirtualValue(string $Ident)
+    public function GetVirtualValue(string $Ident): mixed
     {
-        $varID = @$this->GetIDForIdent($Ident);
-        if ($varID === false || !@IPS_VariableExists($varID)) {
+        if (@$this->GetIDForIdent($Ident) === false) {
             throw new Exception('Virtual variable not found: ' . $Ident);
         }
-        return GetValue($varID);
+        return $this->GetValue($Ident);
     }
 
-    public function SetVirtualValue(string $Ident, $Value): void
+    public function SetVirtualValue(string $Ident, mixed $Value): void
     {
         $this->RequestAction($Ident, $Value);
     }
@@ -469,14 +505,14 @@ class VariableAggregator extends IPSModule
         foreach ($mappings as $mapping) {
             $sourceID = (int)($mapping['SourceVariableID'] ?? 0);
             $ident = $this->resolveIdent($mapping);
-            if (empty($ident)) {
+            if ($ident === '') {
                 continue;
             }
 
             $name = trim($mapping['Name'] ?? '');
             $hasSource = $sourceID > 0 && @IPS_VariableExists($sourceID);
-            
-            if (empty($name) && $hasSource) {
+
+            if ($name === '' && $hasSource) {
                 $name = IPS_GetName($sourceID);
             }
 
@@ -505,12 +541,21 @@ class VariableAggregator extends IPSModule
 
         foreach ($raw as &$mapping) {
             $ident = trim($mapping['Ident'] ?? '');
-            if (!empty($ident)) {
-                $varID = @$this->GetIDForIdent($ident);
-                if ($varID !== false && @IPS_VariableExists($varID)) {
-                    $obj = IPS_GetObject($varID);
-                    $mapping['Name'] = $obj['ObjectName'];
-                }
+            if ($ident === '') {
+                continue;
+            }
+            $varID = @$this->GetIDForIdent($ident);
+            if ($varID === false || !@IPS_VariableExists($varID)) {
+                continue;
+            }
+            $currentName = IPS_GetObject($varID)['ObjectName'];
+            $propertyName = trim($mapping['Name'] ?? '');
+            $sourceID = (int)($mapping['SourceVariableID'] ?? 0);
+            $sourceName = ($sourceID > 0 && @IPS_VariableExists($sourceID)) ? IPS_GetName($sourceID) : '';
+
+            // Surface manual renames from the object tree, but keep the "empty = follow source" default
+            if ($propertyName !== '' || $currentName !== $sourceName) {
+                $mapping['Name'] = $currentName;
             }
         }
         unset($mapping);
@@ -520,35 +565,38 @@ class VariableAggregator extends IPSModule
 
     private function getVariableMappings(): array
     {
+        if ($this->cachedMappings !== null) {
+            return $this->cachedMappings;
+        }
+
         $raw = @json_decode($this->ReadPropertyString('VariableMappings'), true);
         if (!is_array($raw)) {
+            $this->cachedMappings = [];
             return [];
         }
-        return array_filter($raw, function ($mapping) {
+
+        $this->cachedMappings = array_values(array_filter($raw, function ($mapping) {
             $sourceID = (int)($mapping['SourceVariableID'] ?? 0);
             $name = trim($mapping['Name'] ?? '');
             $targetType = (int)($mapping['TargetType'] ?? -1);
-            return $sourceID > 0 || (!empty($name) && $targetType >= 0 && $targetType <= 3);
-        });
+            return $sourceID > 0 || ($name !== '' && $targetType >= 0 && $targetType <= 3);
+        }));
+
+        return $this->cachedMappings;
     }
 
-    private function normalizeMappings(): void
+    private function normalizeMappings(): bool
     {
-        static $normalizing = false;
-        if ($normalizing) {
-            return;
-        }
-
         $raw = @json_decode($this->ReadPropertyString('VariableMappings'), true);
         if (!is_array($raw)) {
-            return;
+            return false;
         }
 
         $modified = false;
         $usedIdents = [];
         foreach ($raw as &$mapping) {
             $ident = trim($mapping['Ident'] ?? '');
-            if (empty($ident) || in_array($ident, $usedIdents)) {
+            if ($ident === '' || in_array($ident, $usedIdents, true)) {
                 $mapping['Ident'] = $this->generateIdent();
                 $modified = true;
             }
@@ -556,15 +604,15 @@ class VariableAggregator extends IPSModule
         }
         unset($mapping);
 
-        if ($modified) {
-            $normalizing = true;
-            try {
-                IPS_SetProperty($this->InstanceID, 'VariableMappings', json_encode(array_values($raw)));
-                IPS_ApplyChanges($this->InstanceID);
-            } finally {
-                $normalizing = false;
-            }
+        if (!$modified) {
+            return false;
         }
+
+        // Persist and trigger a fresh ApplyChanges; this method returns true so the caller aborts
+        // the current pass and lets the recursive call do the work with normalized data
+        IPS_SetProperty($this->InstanceID, 'VariableMappings', json_encode(array_values($raw)));
+        IPS_ApplyChanges($this->InstanceID);
+        return true;
     }
 
     private function findMappingByIdent(array $mappings, string $ident): ?array
@@ -579,6 +627,9 @@ class VariableAggregator extends IPSModule
 
     private function findMappingsBySourceID(array $mappings, int $sourceID): array
     {
+        if ($sourceID <= 0) {
+            return [];
+        }
         return array_values(array_filter($mappings, function ($mapping) use ($sourceID) {
             return (int)($mapping['SourceVariableID'] ?? 0) === $sourceID;
         }));
@@ -591,23 +642,36 @@ class VariableAggregator extends IPSModule
 
     private function generateIdent(): string
     {
-        return 'VA_ID_' . str_pad((string)random_int(0, 99999999), 8, '0', STR_PAD_LEFT);
+        return self::IDENT_PREFIX . str_pad((string)random_int(0, 99999999), 8, '0', STR_PAD_LEFT);
+    }
+
+    private function resolveProfile(int $sourceID, int $sourceType, int $targetType): string
+    {
+        if ($sourceType !== $targetType) {
+            return '';
+        }
+        $sourceVar = IPS_GetVariable($sourceID);
+        return $sourceVar['VariableCustomProfile'] !== ''
+            ? $sourceVar['VariableCustomProfile']
+            : $sourceVar['VariableProfile'];
     }
 
     private function syncFromSource(int $sourceID, string $ident, int $sourceType, int $targetType): void
     {
-        $varID = @$this->GetIDForIdent($ident);
-        if ($varID === false) {
-            return;
-        }
-
         $sourceValue = @GetValue($sourceID);
-        $convertedValue = $this->convertValue($sourceValue, $targetType);
-
-        @SetValue($varID, $convertedValue);
+        $this->writeVirtualValue($ident, $sourceValue, $targetType);
     }
 
-    private function syncToSource(int $sourceID, $value): void
+    private function writeVirtualValue(string $ident, mixed $value, int $targetType): void
+    {
+        if (@$this->GetIDForIdent($ident) === false) {
+            return;
+        }
+        $convertedValue = $this->convertValue($value, $targetType);
+        @$this->SetValue($ident, $convertedValue);
+    }
+
+    private function syncToSource(int $sourceID, mixed $value): void
     {
         $sourceVar = IPS_GetVariable($sourceID);
         if ($sourceVar['VariableAction'] > 0 || $sourceVar['VariableCustomAction'] > 0) {
@@ -617,7 +681,7 @@ class VariableAggregator extends IPSModule
         }
     }
 
-    private function convertValue($value, int $targetType)
+    private function convertValue(mixed $value, int $targetType): mixed
     {
         if ($value === null) {
             switch ($targetType) {
@@ -631,63 +695,13 @@ class VariableAggregator extends IPSModule
 
         switch ($targetType) {
             case self::TYPE_BOOLEAN:
-                if (is_string($value)) {
-                    $lower = strtolower(trim($value));
-                    if (in_array($lower, ['false', 'off', 'no', '0', '', 'falsch', 'aus', 'nein'], true)) {
-                        return false;
-                    }
-                    if (is_numeric($lower)) {
-                        return (float)$lower != 0;
-                    }
-                    return !empty($lower);
-                }
-                if (is_numeric($value)) {
-                    return $value != 0;
-                }
-                return (bool)$value;
+                return $this->coerceToBool($value);
 
             case self::TYPE_INTEGER:
-                if (is_bool($value)) {
-                    return $value ? 1 : 0;
-                }
-                if (is_float($value)) {
-                    return (int)round($value);
-                }
-                if (is_string($value)) {
-                    $lower = strtolower(trim($value));
-                    if ($lower === 'true' || $lower === 'on' || $lower === 'ja' || $lower === 'ein') {
-                        return 1;
-                    }
-                    if ($lower === 'false' || $lower === 'off' || $lower === 'nein' || $lower === 'aus') {
-                        return 0;
-                    }
-                    $value = str_replace(',', '.', $value);
-                    if (preg_match('/^[+-]?\d*\.?\d+/', trim($value), $matches)) {
-                        return (int)round((float)$matches[0]);
-                    }
-                    return 0;
-                }
-                return (int)$value;
+                return $this->coerceToInt($value);
 
             case self::TYPE_FLOAT:
-                if (is_bool($value)) {
-                    return $value ? 1.0 : 0.0;
-                }
-                if (is_string($value)) {
-                    $lower = strtolower(trim($value));
-                    if ($lower === 'true' || $lower === 'on' || $lower === 'ja' || $lower === 'ein') {
-                        return 1.0;
-                    }
-                    if ($lower === 'false' || $lower === 'off' || $lower === 'nein' || $lower === 'aus') {
-                        return 0.0;
-                    }
-                    $value = str_replace(',', '.', $value);
-                    if (preg_match('/^[+-]?\d*\.?\d+/', trim($value), $matches)) {
-                        return (float)$matches[0];
-                    }
-                    return 0.0;
-                }
-                return (float)$value;
+                return $this->coerceToFloat($value);
 
             case self::TYPE_STRING:
                 if (is_bool($value)) {
@@ -700,35 +714,108 @@ class VariableAggregator extends IPSModule
         }
     }
 
-    private function maintainVariableSmart(string $ident, string $name, int $targetType, int $position): void
+    private function coerceToBool(mixed $value): bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+        if (is_string($value)) {
+            $lower = strtolower(trim($value));
+            if (in_array($lower, self::FALSE_STRINGS, true)) {
+                return false;
+            }
+            if (in_array($lower, self::TRUE_STRINGS, true)) {
+                return true;
+            }
+            if (is_numeric($lower)) {
+                return (float)$lower != 0;
+            }
+            return $lower !== '';
+        }
+        if (is_numeric($value)) {
+            return $value != 0;
+        }
+        return (bool)$value;
+    }
+
+    private function coerceToInt(mixed $value): int
+    {
+        if (is_bool($value)) {
+            return $value ? 1 : 0;
+        }
+        if (is_float($value)) {
+            return (int)round($value);
+        }
+        if (is_string($value)) {
+            $lower = strtolower(trim($value));
+            if (in_array($lower, self::TRUE_STRINGS, true)) {
+                return 1;
+            }
+            if (in_array($lower, self::FALSE_STRINGS, true)) {
+                return 0;
+            }
+            $normalized = str_replace(',', '.', $lower);
+            if (preg_match('/^[+-]?\d*\.?\d+/', $normalized, $matches)) {
+                return (int)round((float)$matches[0]);
+            }
+            return 0;
+        }
+        return (int)$value;
+    }
+
+    private function coerceToFloat(mixed $value): float
+    {
+        if (is_bool($value)) {
+            return $value ? 1.0 : 0.0;
+        }
+        if (is_string($value)) {
+            $lower = strtolower(trim($value));
+            if (in_array($lower, self::TRUE_STRINGS, true)) {
+                return 1.0;
+            }
+            if (in_array($lower, self::FALSE_STRINGS, true)) {
+                return 0.0;
+            }
+            $normalized = str_replace(',', '.', $lower);
+            if (preg_match('/^[+-]?\d*\.?\d+/', $normalized, $matches)) {
+                return (float)$matches[0];
+            }
+            return 0.0;
+        }
+        return (float)$value;
+    }
+
+    private function maintainVariableSmart(string $ident, string $name, int $targetType, string $profile, int $position): void
     {
         $varID = @$this->GetIDForIdent($ident);
-        
+
         if ($varID !== false && @IPS_VariableExists($varID)) {
             $obj = IPS_GetObject($varID);
             if ($obj['ObjectName'] !== $name) {
                 IPS_SetName($varID, $name);
             }
-            // Position is under user control after creation, don't overwrite
+            // Position and profile are under user control after creation
             return;
         }
-        
-        $this->MaintainVariable($ident, $name, $targetType, '', $position, true);
+
+        $this->MaintainVariable($ident, $name, $targetType, $profile, $position, true);
     }
 
     private function cleanupOldVariables(array $currentIdents): void
     {
         $children = IPS_GetChildrenIDs($this->InstanceID);
         foreach ($children as $childID) {
-            if (IPS_GetObject($childID)['ObjectType'] !== 2) {
+            $obj = IPS_GetObject($childID);
+            if ($obj['ObjectType'] !== 2) {
                 continue;
             }
-
-            $ident = IPS_GetObject($childID)['ObjectIdent'];
-            if (!empty($ident) && !in_array($ident, $currentIdents)) {
+            $ident = $obj['ObjectIdent'];
+            if ($ident === '' || strpos($ident, self::IDENT_PREFIX) !== 0) {
+                continue;
+            }
+            if (!in_array($ident, $currentIdents, true)) {
                 $this->UnregisterVariable($ident);
             }
         }
     }
-
 }

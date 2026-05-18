@@ -1,7 +1,7 @@
 # VariableAggregator for IP-Symcon
 
 [![IP-Symcon Version](https://img.shields.io/badge/IP--Symcon-8.1+-blue.svg)](https://www.symcon.de)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License: EUPL-1.2](https://img.shields.io/badge/License-EUPL--1.2-blue.svg)](LICENSE)
 
 A powerful IP-Symcon module for creating virtual devices that consolidate variables from multiple real devices with bidirectional synchronization and optional data type conversion.
 
@@ -233,6 +233,35 @@ Create control interfaces that send commands to devices without reflecting devic
 
 ## Changelog
 
+### Version 2.0.0
+
+**Breaking Change:** Virtual variables are now protected from direct external writes. Scripts that previously wrote into a virtual aggregator variable via `SetValue($virtualVariableID, $value)` must switch to the official API:
+
+```php
+// Old — no longer works:
+SetValue(12345, true);
+
+// New:
+VA_SetVirtualValue($AggregatorInstanceID, 'VA_ID_12345678', true);
+```
+
+Reading via `GetValue($variableID)` continues to work unchanged.
+
+**Other changes:**
+- Migrated to the new base class `IPSModuleStrict` (recommended since IP-Symcon 8.1) — strict type checking, improved error handling, protected virtual variables
+- Licence changed from MIT to **EUPL v. 1.2**
+
+### Version 1.2.0
+- Cleanup only removes variables with the `VA_ID_` prefix — manually created child variables of the instance are preserved
+- Sync lock in `RequestAction` prevents echo loops when writing to the source variable
+- Sync lock is reset on startup in case it was left in a stuck state after a crash
+- Existing source profiles are inherited by newly created virtual variables (when source and target type match)
+- `VM_UPDATE` uses the new value directly from the message data — avoids rare race conditions
+- More robust identifier normalization without re-running the lifecycle twice
+- Hardened source-variable existence check in `MessageSink`
+- Unified handling of truthy/falsy strings in type conversion (e.g. "yes", "on", "true")
+- More complete German localization
+
 ### Version 1.1.0
 - Variable name and position are now under user control after creation (only overwritten when explicitly changed in the configuration)
 - Pre-generated unique identifiers for new variable mappings
@@ -260,7 +289,11 @@ For issues, feature requests, or contributions, please visit:
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the **European Union Public Licence (EUPL) v. 1.2** — see the [LICENSE](LICENSE) file for the full text.
+
+The EUPL is a copyleft licence: derivative works that are distributed must also be released under the EUPL or a compatible licence (e.g. GPL, AGPL, MPL, LGPL — see the appendix of the EUPL for the full compatibility list). Earlier releases up to version 1.2.0 remain available under the previous MIT licence.
+
+The EUPL is published in 24 official language versions, all legally equivalent. Other language versions are available on the [official EU page](https://interoperable-europe.ec.europa.eu/collection/eupl/eupl-text-eupl-12).
 
 ---
 

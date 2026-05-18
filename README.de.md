@@ -1,7 +1,7 @@
 # VariableAggregator für IP-Symcon
 
 [![IP-Symcon Version](https://img.shields.io/badge/IP--Symcon-8.1+-blue.svg)](https://www.symcon.de)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Lizenz: EUPL-1.2](https://img.shields.io/badge/Lizenz-EUPL--1.2-blue.svg)](LICENSE)
 
 Ein leistungsstarkes IP-Symcon-Modul zum Erstellen virtueller Geräte, die Variablen aus mehreren realen Geräten mit bidirektionaler Synchronisation und optionaler Datentypkonvertierung zusammenfassen.
 
@@ -233,6 +233,35 @@ Steuerungsschnittstellen erstellen, die Befehle an Geräte senden ohne Gerätezu
 
 ## Changelog
 
+### Version 2.0.0
+
+**Breaking Change:** Virtuelle Variablen sind nun vor direktem Schreiben von außen geschützt. Skripte, die bisher mit `SetValue($virtuelleVariableID, $wert)` direkt in eine virtuelle Variable des Aggregators geschrieben haben, müssen auf die offizielle API umgestellt werden:
+
+```php
+// Alt — funktioniert nicht mehr:
+SetValue(12345, true);
+
+// Neu:
+VA_SetVirtualValue($AggregatorInstanzID, 'VA_ID_12345678', true);
+```
+
+Lesen mit `GetValue($variableID)` funktioniert weiterhin unverändert.
+
+**Weitere Änderungen:**
+- Migration zur neuen Basisklasse `IPSModuleStrict` (Empfehlung seit IP-Symcon 8.1) — strikte Typprüfung, bessere Fehlerbehandlung, geschützte virtuelle Variablen
+- Lizenz von MIT zu **EUPL v. 1.2** geändert
+
+### Version 1.2.0
+- Bereinigung beschränkt sich auf Variablen mit `VA_ID_`-Präfix — manuell angelegte Kind-Variablen der Instanz bleiben erhalten
+- Sync-Sperre in `RequestAction` verhindert Echo-Schleifen beim Schreiben in die Quelle
+- Sync-Sperre wird beim Start zurückgesetzt, falls sie nach einem Absturz hängen geblieben ist
+- Bestehende Quell-Profile werden bei neu angelegten virtuellen Variablen übernommen (sofern Quell- und Zieltyp übereinstimmen)
+- `VM_UPDATE` liefert den neuen Wert direkt aus dem Nachrichten-Datenpaket — vermeidet seltene Race-Conditions
+- Stabilere Normalisierung der Variablen-Bezeichner ohne doppelte Ausführung des Lifecycles
+- Robusterer Existenz-Check für Quellvariablen in `MessageSink`
+- Einheitliche Behandlung von Wahrheitswert-Strings in der Typkonvertierung (z. B. „ja", „ein", „on", „true")
+- Vollständigere deutsche Lokalisierung
+
 ### Version 1.1.0
 - Name und Position von Variablen stehen nach der Erstellung unter Benutzerkontrolle (werden nur überschrieben, wenn sie explizit in der Konfiguration geändert werden)
 - Vorgenerierte eindeutige Bezeichner für neue Variablen-Zuordnungen
@@ -251,7 +280,7 @@ Steuerungsschnittstellen erstellen, die Befehle an Geräte senden ohne Gerätezu
 
 ## Support
 
-Bei Problemen, Feature-Anfragen oder Beiträgen besuchen Sie bitte:
+Bei Problemen, Funktionswünschen oder Beiträgen besuchen Sie bitte:
 - [GitHub Repository](https://github.com/mwlf01/IPSymcon-VariableAggregator)
 - [GitHub Issues](https://github.com/mwlf01/IPSymcon-VariableAggregator/issues)
 - [Symcon Community](https://community.symcon.de/) – Benutzer: **mwlf**
@@ -260,7 +289,11 @@ Bei Problemen, Feature-Anfragen oder Beiträgen besuchen Sie bitte:
 
 ## Lizenz
 
-Dieses Projekt ist unter der MIT-Lizenz lizenziert - siehe [LICENSE](LICENSE) Datei für Details.
+Dieses Projekt steht unter der **European Union Public Licence (EUPL) v. 1.2** — siehe die [LICENSE](LICENSE)-Datei für den vollständigen Lizenztext.
+
+Die EUPL ist eine Copyleft-Lizenz: abgeleitete Werke, die weitergegeben werden, müssen ebenfalls unter der EUPL oder einer kompatiblen Lizenz veröffentlicht werden (z. B. GPL, AGPL, MPL, LGPL — die vollständige Kompatibilitätsliste steht im Anhang der EUPL). Frühere Releases bis Version 1.2.0 bleiben weiterhin unter der zuvor genutzten MIT-Lizenz verfügbar.
+
+Die EUPL wird in 24 offiziellen Sprachfassungen veröffentlicht, die rechtlich alle gleichwertig sind. Die Lizenz kann in anderen Sprachen auf der [offiziellen EU-Seite](https://interoperable-europe.ec.europa.eu/collection/eupl/eupl-text-eupl-12) eingesehen werden.
 
 ---
 
